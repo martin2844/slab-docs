@@ -1,0 +1,28 @@
+services:
+  slab-docs:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-6980}:6980"
+    environment:
+      PORT: 6980
+      DOCS_API_KEY: "${DOCS_API_KEY:?Set DOCS_API_KEY in .env}"
+      DOCS_DB_PATH: /data/slab-docs.db
+      NODE_ENV: production
+    volumes:
+      - slab-docs-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:6980/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  slab-docs-data:

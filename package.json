@@ -1,0 +1,45 @@
+{
+  "name": "slab-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small, reliable, headless knowledge base for humans and AI agents.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "better-sqlite3": "12.4.1",
+    "dotenv": "17.2.3",
+    "express": "5.2.1",
+    "hono": "4.13.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@eslint/js": "9.33.0",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/express": "5.0.3",
+    "@types/node": "24.3.0",
+    "@types/supertest": "6.0.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "9.33.0",
+    "picomatch": "4.0.5",
+    "supertest": "7.1.4",
+    "tsx": "4.23.12",
+    "typescript": "5.9.2",
+    "typescript-eslint": "8.40.0",
+    "vitest": "4.1.10"
+  }
+}
