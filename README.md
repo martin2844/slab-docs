@@ -1,14 +1,14 @@
 # Slab Docs
 
-Una base de conocimiento pequeña, confiable y headless para humanos y agentes de IA. Guarda Markdown jerárquico en SQLite, mantiene revisiones append-only y expone la misma lógica por REST y MCP Streamable HTTP.
+A small, reliable, headless knowledge base for humans and AI agents. It stores hierarchical Markdown in SQLite, keeps append-only revisions, and exposes the same logic through REST and MCP Streamable HTTP.
 
-No incluye UI: cualquier cliente puede construir árbol, lista, búsqueda, editor y breadcrumbs usando la API.
+It does not include a UI: any client can build a tree, list, search experience, editor, and breadcrumbs using the API.
 
-## Inicio rápido con Docker
+## Quick start with Docker
 
 ```bash
 cp .env.example .env
-# Reemplazar DOCS_API_KEY por un secreto largo y aleatorio.
+# Replace DOCS_API_KEY with a long, random secret.
 docker compose up -d --build
 ```
 
@@ -18,11 +18,11 @@ Endpoints:
 - REST: `http://localhost:6980/api`
 - MCP: `http://localhost:6980/mcp`
 
-El volumen `slab-docs-data` conserva `/data/slab-docs.db` aunque el container sea recreado. Las migraciones se ejecutan automáticamente al iniciar y SQLite usa WAL en bases persistentes.
+The `slab-docs-data` volume preserves `/data/slab-docs.db` when the container is recreated. Migrations run automatically on startup, and SQLite uses WAL mode for persistent databases.
 
-## Autenticación
+## Authentication
 
-`/api/*` y `/mcp` aceptan cualquiera de estos headers:
+`/api/*` and `/mcp` accept either of these headers:
 
 ```http
 Authorization: Bearer <DOCS_API_KEY>
@@ -32,24 +32,24 @@ Authorization: Bearer <DOCS_API_KEY>
 X-API-Key: <DOCS_API_KEY>
 ```
 
-`/health` es público. El proceso se niega a iniciar si `DOCS_API_KEY` está vacío.
+`/health` is public. The process refuses to start when `DOCS_API_KEY` is empty.
 
 ## REST
 
-Todas las respuestas REST, salvo health, usan `{ "data": ..., "error": null }` o `{ "data": null, "error": ... }`.
+All REST responses except health use `{ "data": ..., "error": null }` or `{ "data": null, "error": ... }`.
 
-| Método | Ruta | Uso |
+| Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/documents` | Crear documento y revisión inicial |
-| `GET` | `/api/documents` | Listar y filtrar documentos |
-| `GET` | `/api/documents/:id` | Leer documento |
-| `PATCH` | `/api/documents/:id` | Actualizar documento |
-| `DELETE` | `/api/documents/:id` | Archivar sin borrar |
-| `GET` | `/api/search?q=` | Buscar por FTS5 |
-| `GET` | `/api/documents/:id/revisions` | Listar revisiones |
-| `GET` | `/api/documents/:id/revisions/:revision` | Leer una revisión |
+| `POST` | `/api/documents` | Create a document and its initial revision |
+| `GET` | `/api/documents` | List and filter documents |
+| `GET` | `/api/documents/:id` | Read a document |
+| `PATCH` | `/api/documents/:id` | Update a document |
+| `DELETE` | `/api/documents/:id` | Archive without deleting |
+| `GET` | `/api/search?q=` | Search with FTS5 |
+| `GET` | `/api/documents/:id/revisions` | List revisions |
+| `GET` | `/api/documents/:id/revisions/:revision` | Read a revision |
 
-Filtros de listado: `parent_id`, `tag`, `archived`, `search`, `limit` y `offset`.
+List filters: `parent_id`, `tag`, `archived`, `search`, `limit`, and `offset`.
 
 ```bash
 curl -X POST http://localhost:6980/api/documents \
@@ -66,13 +66,13 @@ curl "http://localhost:6980/api/search?q=autocorp%20pricing" \
   -H "Authorization: Bearer $DOCS_API_KEY"
 ```
 
-Los slugs explícitos deben usar minúsculas, números y guiones. Si se omite el slug, se genera desde el título y se agrega un sufijo cuando sea necesario. Un cambio de título o body crea una nueva revisión; cambios solo de tags o jerarquía no duplican contenido en el historial.
+Explicit slugs must use lowercase letters, numbers, and hyphens. If the slug is omitted, it is generated from the title and receives a suffix when necessary. Changing the title or body creates a new revision; tag-only or hierarchy-only changes do not duplicate content in the revision history.
 
 ## MCP
 
-El endpoint `/mcp` implementa Streamable HTTP actual y mantiene compatibilidad stateless con clientes MCP de la generación anterior. Usar la URL HTTP y enviar la API key como Bearer token.
+The `/mcp` endpoint implements the current Streamable HTTP transport while retaining stateless compatibility with previous-generation MCP clients. Use the HTTP URL and send the API key as a Bearer token.
 
-Tools disponibles:
+Available tools:
 
 - `list_docs`
 - `search_docs`
@@ -83,18 +83,18 @@ Tools disponibles:
 - `list_doc_revisions`
 - `get_doc_revision`
 
-Cada tool devuelve JSON consistente tanto como contenido de texto como en `structuredContent`. `get_doc`, `update_doc`, `archive_doc` y los tools de revisiones aceptan exactamente uno de `id` o `slug`.
+Each tool returns consistent JSON as both text content and `structuredContent`. `get_doc`, `update_doc`, `archive_doc`, and the revision tools accept exactly one of `id` or `slug`.
 
-## Desarrollo
+## Development
 
-Requiere Node.js 22 o superior.
+Requires Node.js 22 or later.
 
 ```bash
 npm ci
 DOCS_API_KEY=development-key DOCS_DB_PATH=./data/slab-docs.db npm run dev
 ```
 
-Comandos de calidad:
+Quality commands:
 
 ```bash
 npm test
@@ -104,14 +104,14 @@ npm run lint
 npm run build
 ```
 
-La suite cubre utilidades, validación, CRUD, jerarquía y ciclos, unicidad de slug, archivo, revisiones, FTS5, autenticación, REST, los ocho tools MCP, Streamable HTTP, migraciones y persistencia entre reinicios.
+The suite covers utilities, validation, CRUD, hierarchy and cycle handling, slug uniqueness, archiving, revisions, FTS5, authentication, REST, all eight MCP tools, Streamable HTTP, migrations, and persistence across restarts.
 
-## Variables de entorno
+## Environment variables
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `PORT` | `6980` | Puerto HTTP |
-| `HOST` | `0.0.0.0` | Interfaz de escucha |
-| `DOCS_API_KEY` | — | Secreto obligatorio |
-| `DOCS_DB_PATH` | `/data/slab-docs.db` | Archivo SQLite |
-| `NODE_ENV` | `development` | Entorno de ejecución |
+| `PORT` | `6980` | HTTP port |
+| `HOST` | `0.0.0.0` | Listening interface |
+| `DOCS_API_KEY` | — | Required secret |
+| `DOCS_DB_PATH` | `/data/slab-docs.db` | SQLite file |
+| `NODE_ENV` | `development` | Runtime environment |
