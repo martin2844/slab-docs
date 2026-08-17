@@ -1,7 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/server";
-import type { CallToolResult, JSONObject } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { DocumentIdentifier } from "../domain/documents.js";
+import type {
+  Document,
+  DocumentIdentifier,
+  DocumentMutationResult
+} from "../domain/documents.js";
 import { AppError, toPublicError } from "../errors.js";
 import {
   createDocumentSchema,
@@ -38,8 +42,7 @@ function identifier(input: z.infer<typeof identifierSchema>): DocumentIdentifier
 function toolSuccess(data: unknown): CallToolResult {
   const payload = { data, error: null };
   return {
-    content: [{ type: "text", text: JSON.stringify(payload) }],
-    structuredContent: payload as unknown as JSONObject
+    content: [{ type: "text", text: JSON.stringify(payload) }]
   };
 }
 
@@ -51,9 +54,14 @@ function toolFailure(error: unknown): CallToolResult {
   const payload = { data: null, error: publicError };
   return {
     isError: true,
-    content: [{ type: "text", text: JSON.stringify(payload) }],
-    structuredContent: payload as unknown as JSONObject
+    content: [{ type: "text", text: JSON.stringify(payload) }]
   };
+}
+
+function mutationResult(document: Document, changedFields: string[]): DocumentMutationResult {
+  const { body, ...summary } = document;
+  void body;
+  return { ...summary, changed_fields: changedFields };
 }
 
 function runTool(operation: () => unknown): CallToolResult {
@@ -74,7 +82,8 @@ export function createMcpServer(service: DocumentService): McpServer {
     "list_docs",
     {
       title: "List documents",
-      description: "List documents with optional hierarchy, tag, archive, and pagination filters.",
+      description:
+        "List document metadata with optional hierarchy, tag, archive, and pagination filters. Does not return document bodies. Use search_docs to discover relevant documents and get_doc to read one complete document.",
       inputSchema: listDocsSchema,
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
@@ -85,7 +94,8 @@ export function createMcpServer(service: DocumentService): McpServer {
     "search_docs",
     {
       title: "Search documents",
-      description: "Search active document titles, Markdown bodies, and tags before reading full documents.",
+      description:
+        "Search active document titles, Markdown bodies, and tags. Returns metadata, a short excerpt, and relevance score; use get_doc to read one complete document.",
       inputSchema: searchDocumentsSchema,
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
@@ -111,7 +121,10 @@ export function createMcpServer(service: DocumentService): McpServer {
       inputSchema: createDocumentSchema,
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false }
     },
-    (input) => runTool(() => service.create(input))
+    (input) =>
+      runTool(() =>
+        mutationResult(service.create(input), ["title", "body", "parent_id", "tags"])
+      )
   );
 
   server.registerTool(
@@ -124,7 +137,12 @@ export function createMcpServer(service: DocumentService): McpServer {
     },
     (input) => {
       const { id, slug, ...update } = input;
-      return runTool(() => service.update(identifier({ id, slug }), update));
+      return runTool(() =>
+        mutationResult(
+          service.update(identifier({ id, slug }), update),
+          Object.keys(update).filter((field) => field !== "author")
+        )
+      );
     }
   );
 
@@ -141,7 +159,8 @@ export function createMcpServer(service: DocumentService): McpServer {
         openWorldHint: false
       }
     },
-    (input) => runTool(() => service.archive(identifier(input)))
+    (input) =>
+      runTool(() => mutationResult(service.archive(identifier(input)), ["archived_at"]))
   );
 
   server.registerTool(

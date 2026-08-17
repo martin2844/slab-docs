@@ -58,7 +58,10 @@ describe("DocumentService", () => {
     });
     expect(context.service.get({ id: document.id })).toEqual(document);
     expect(context.service.get({ slug: "autocorp" })).toEqual(document);
-    expect(listDocs(context.service)).toEqual([document]);
+    expect(listDocs(context.service)).toEqual([
+      expect.objectContaining({ id: document.id, title: document.title })
+    ]);
+    expect(listDocs(context.service)[0]).not.toHaveProperty("body");
     expect(context.service.listRevisions({ slug: "autocorp" })).toMatchObject([
       { revision: 1, title: "Autocorp", author: "system" }
     ]);
@@ -84,9 +87,9 @@ describe("DocumentService", () => {
     createDoc(context.service, { title: "Product", body: "Roadmap", tags: ["product"] });
 
     expect(listDocs(context.service, { parent_id: null })).toHaveLength(2);
-    expect(listDocs(context.service, { parent_id: root.id })).toEqual([child]);
-    expect(listDocs(context.service, { tag: "sales" })).toEqual([child]);
-    expect(listDocs(context.service, { search: "enterprise" })).toEqual([child]);
+    expect(listDocs(context.service, { parent_id: root.id })).toMatchObject([{ id: child.id }]);
+    expect(listDocs(context.service, { tag: "sales" })).toMatchObject([{ id: child.id }]);
+    expect(listDocs(context.service, { search: "enterprise" })).toMatchObject([{ id: child.id }]);
     expect(listDocs(context.service, { limit: 1, offset: 1 })).toHaveLength(1);
   });
 
@@ -146,7 +149,7 @@ describe("DocumentService", () => {
     const archived = context.service.archive({ id: document.id });
     expect(context.service.archive({ id: document.id })).toEqual(archived);
     expect(listDocs(context.service)).toEqual([]);
-    expect(listDocs(context.service, { archived: true })).toEqual([archived]);
+    expect(listDocs(context.service, { archived: true })).toMatchObject([{ id: archived.id }]);
     expect(context.service.get({ id: document.id }).archived_at).not.toBeNull();
   });
 

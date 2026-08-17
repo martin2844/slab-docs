@@ -66,19 +66,22 @@ describe("MCP tools", () => {
       expect(createResult.isError).not.toBe(true);
       const created = payload(createResult).data as { id: string; slug: string };
       expect(created.slug).toBe("autocorp-pricing");
-      expect(createResult.structuredContent).toMatchObject({ data: { id: created.id }, error: null });
+      expect(createResult.structuredContent).toBeUndefined();
+      expect(payload(createResult).data).not.toHaveProperty("body");
 
       const listResult = await client.callTool({
         name: "list_docs",
         arguments: { tag: "sales", limit: 10 }
       });
       expect(payload(listResult).data).toMatchObject([{ id: created.id }]);
+      expect((payload(listResult).data as unknown[])[0]).not.toHaveProperty("body");
 
       const searchResult = await client.callTool({
         name: "search_docs",
         arguments: { query: "enterprise", limit: 5 }
       });
       expect(payload(searchResult).data).toMatchObject([{ slug: created.slug }]);
+      expect((payload(searchResult).data as unknown[])[0]).not.toHaveProperty("body");
 
       const getResult = await client.callTool({
         name: "get_doc",
@@ -90,7 +93,11 @@ describe("MCP tools", () => {
         name: "update_doc",
         arguments: { id: created.id, body: "Wholesale prices", author: "Ana" }
       });
-      expect(payload(updateResult).data).toMatchObject({ body: "Wholesale prices" });
+      expect(payload(updateResult).data).toMatchObject({
+        id: created.id,
+        changed_fields: ["body"]
+      });
+      expect(payload(updateResult).data).not.toHaveProperty("body");
 
       const revisionsResult = await client.callTool({
         name: "list_doc_revisions",

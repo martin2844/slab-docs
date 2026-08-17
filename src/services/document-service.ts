@@ -4,6 +4,7 @@ import type {
   Document,
   DocumentIdentifier,
   DocumentRevision,
+  DocumentSummary,
   SearchResult
 } from "../domain/documents.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.js";
@@ -18,6 +19,14 @@ import { slugify, slugWithSuffix } from "../utils/slug.js";
 import { deserializeTags, serializeTags } from "../utils/tags.js";
 
 interface DocumentRow extends Omit<Document, "tags"> {
+  tags: string;
+}
+
+interface DocumentSummaryRow extends Omit<DocumentSummary, "tags"> {
+  tags: string;
+}
+
+interface SearchResultRow extends Omit<SearchResult, "tags"> {
   tags: string;
 }
 
@@ -37,6 +46,14 @@ interface ServiceOptions {
 type QueryValue = string | number | null;
 
 function mapDocument(row: DocumentRow): Document {
+  return { ...row, tags: deserializeTags(row.tags) };
+}
+
+function mapDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
+  return { ...row, tags: deserializeTags(row.tags) };
+}
+
+function mapSearchResult(row: SearchResultRow): SearchResult {
   return { ...row, tags: deserializeTags(row.tags) };
 }
 
@@ -103,7 +120,7 @@ export class DocumentService {
     }
   }
 
-  public list(input: ListDocumentsInput): Document[] {
+  public list(input: ListDocumentsInput): DocumentSummary[] {
     const joins: string[] = [];
     const conditions: string[] = [];
     const parameters: QueryValue[] = [];
@@ -138,16 +155,24 @@ export class DocumentService {
         : "bm25(documents_fts) ASC, d.title COLLATE NOCASE ASC";
     const rows = this.database
       .prepare(
-        `SELECT d.*
+        `SELECT
+           d.id,
+           d.slug,
+           d.title,
+           d.parent_id,
+           d.tags,
+           d.created_at,
+           d.updated_at,
+           d.archived_at
          FROM documents d
          ${joins.join("\n")}
          WHERE ${conditions.join(" AND ")}
          ORDER BY ${order}
          LIMIT ? OFFSET ?`
       )
-      .all(...parameters) as DocumentRow[];
+      .all(...parameters) as DocumentSummaryRow[];
 
-    return rows.map(mapDocument);
+    return rows.map(mapDocumentSummary);
   }
 
   public search(input: SearchDocumentsInput): SearchResult[] {
@@ -162,6 +187,7 @@ export class DocumentService {
                THEN substr(d.body, 1, 240)
              ELSE snippet(documents_fts, 1, '', '', ' … ', 24)
            END AS excerpt,
+           d.tags,
            d.updated_at,
            -bm25(documents_fts, 8.0, 2.0, 1.0) AS score
          FROM documents_fts
@@ -170,9 +196,9 @@ export class DocumentService {
          ORDER BY bm25(documents_fts, 8.0, 2.0, 1.0) ASC, d.updated_at DESC
          LIMIT ?`
       )
-      .all(buildFtsQuery(input.query), input.limit) as SearchResult[];
+      .all(buildFtsQuery(input.query), input.limit) as SearchResultRow[];
 
-    return rows;
+    return rows.map(mapSearchResult);
   }
 
   public get(identifier: DocumentIdentifier): Document {

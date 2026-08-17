@@ -10,6 +10,12 @@ export interface Document {
   archived_at: string | null;
 }
 
+export type DocumentSummary = Omit<Document, "body">;
+
+export interface DocumentMutationResult extends DocumentSummary {
+  changed_fields: string[];
+}
+
 export interface DocumentRevision {
   id: string;
   document_id: string;
@@ -25,6 +31,7 @@ export interface SearchResult {
   slug: string;
   title: string;
   excerpt: string;
+  tags: string[];
   updated_at: string;
   score: number;
 }
