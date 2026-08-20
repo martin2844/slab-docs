@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../../src/db/database.js";
-import { migrations, runMigrations } from "../../src/db/migrations.js";
+import { getMigrationStatus, migrations, runMigrations } from "../../src/db/migrations.js";
 import { createDocumentSchema } from "../../src/schemas/documents.js";
 import { DocumentService } from "../../src/services/document-service.js";
 
@@ -22,6 +22,12 @@ describe("database lifecycle", () => {
       expect(
         database.prepare("SELECT version, name FROM schema_migrations ORDER BY version").all()
       ).toEqual(migrations.map(({ version, name }) => ({ version, name })));
+      expect(getMigrationStatus(database)).toEqual({
+        ready: true,
+        expected: [1, 2],
+        applied: [1, 2],
+        pending: []
+      });
       runMigrations(database);
       expect(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get()).toEqual({
         count: migrations.length
@@ -31,6 +37,20 @@ describe("database lifecycle", () => {
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'documents_fts'")
           .get()
       ).toEqual({ name: "documents_fts" });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("can open an unmigrated database for a readiness-only process", () => {
+    const database = openDatabase(":memory:", { migrate: false });
+    try {
+      expect(getMigrationStatus(database)).toEqual({
+        ready: false,
+        expected: [1, 2],
+        applied: [],
+        pending: [1, 2]
+      });
     } finally {
       database.close();
     }

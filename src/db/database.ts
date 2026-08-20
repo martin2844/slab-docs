@@ -5,7 +5,7 @@ import { runMigrations } from "./migrations.js";
 
 export type SlabDatabase = Database.Database;
 
-export function openDatabase(path: string): SlabDatabase {
+export function openDatabase(path: string, options: { migrate?: boolean } = {}): SlabDatabase {
   if (path !== ":memory:" && !path.startsWith("file:")) {
     mkdirSync(dirname(path), { recursive: true });
   }
@@ -15,6 +15,16 @@ export function openDatabase(path: string): SlabDatabase {
   database.pragma("busy_timeout = 5000");
   database.pragma("synchronous = NORMAL");
   if (path !== ":memory:") database.pragma("journal_mode = WAL");
-  runMigrations(database);
+  if (options.migrate !== false) runMigrations(database);
   return database;
+}
+
+export function closeDatabase(database: SlabDatabase): void {
+  if (!database.open) return;
+  try {
+    database.pragma("wal_checkpoint(PASSIVE)");
+  } catch {
+    // A second process may still hold the shared WAL. Closing remains safe.
+  }
+  database.close();
 }

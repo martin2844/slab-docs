@@ -14,11 +14,12 @@ docker compose up -d --build
 
 Endpoints:
 
-- Health: `GET http://localhost:6980/health`
+- Liveness: `GET http://localhost:6980/health`
+- Readiness: `GET http://localhost:6980/ready`
 - REST: `http://localhost:6980/api`
 - MCP: `http://localhost:6980/mcp`
 
-The `slab-docs-data` volume preserves `/data/slab-docs.db` when the container is recreated. Migrations run automatically on startup, and SQLite uses WAL mode for persistent databases.
+The `slab-docs-data` volume preserves `/data/slab-docs.db` when the container is recreated. Compose runs migrations once before starting the server, and SQLite uses WAL mode for persistent databases.
 
 ## Authentication
 
@@ -32,7 +33,10 @@ Authorization: Bearer <DOCS_API_KEY>
 X-API-Key: <DOCS_API_KEY>
 ```
 
-`/health` is public. The process refuses to start when `DOCS_API_KEY` is empty.
+`/health` and `/ready` are public. Liveness only reports that the process is
+serving; readiness also verifies SQLite access and that every packaged migration
+has been applied. The process refuses to start when neither `DOCS_API_KEY` nor
+`DOCS_API_KEY_FILE` provides a secret.
 
 ## REST
 
@@ -110,8 +114,21 @@ The suite covers utilities, validation, CRUD, hierarchy and cycle handling, slug
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `BIND_ADDRESS` | `127.0.0.1` | Host address published by Docker Compose |
 | `PORT` | `6980` | HTTP port |
 | `HOST` | `0.0.0.0` | Listening interface |
 | `DOCS_API_KEY` | — | Required secret |
+| `DOCS_API_KEY_FILE` | — | Read the secret from a mounted file; mutually exclusive with `DOCS_API_KEY` |
 | `DOCS_DB_PATH` | `/data/slab-docs.db` | SQLite file |
 | `NODE_ENV` | `development` | Runtime environment |
+| `SKIP_MIGRATIONS` | `false` | Set on the server only after the one-shot migration command succeeds |
+
+Run deterministic production migrations with:
+
+```bash
+docker run --rm -v slab-docs-data:/data ghcr.io/martin2844/slab-docs:<version> \
+  node dist/db/migrate.js
+```
+
+The unified self-hosted stack mounts `DOCS_API_KEY_FILE` from a Compose secret.
+The direct environment variable remains available for local development.
