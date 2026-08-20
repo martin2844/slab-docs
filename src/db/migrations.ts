@@ -104,3 +104,23 @@ export function runMigrations(database: Database.Database): void {
     if (!applied.has(migration.version)) applyMigration(migration);
   }
 }
+
+export function getMigrationStatus(database: Database.Database): {
+  ready: boolean;
+  expected: number[];
+  applied: number[];
+  pending: number[];
+} {
+  const expected = migrations.map(({ version }) => version);
+  const tableExists = database.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+  ).get();
+  const applied = tableExists
+    ? (database.prepare("SELECT version FROM schema_migrations ORDER BY version").all() as Array<{
+        version: number;
+      }>).map(({ version }) => version)
+    : [];
+  const appliedVersions = new Set(applied);
+  const pending = expected.filter((version) => !appliedVersions.has(version));
+  return { ready: pending.length === 0, expected, applied, pending };
+}

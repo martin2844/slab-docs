@@ -12,9 +12,15 @@ interface ApplicationOptions {
   service: DocumentService;
   apiKey: string;
   logger?: Logger;
+  readiness?: () => { ready: boolean; details?: Record<string, unknown> };
 }
 
-export function createApplication({ service, apiKey, logger = console }: ApplicationOptions) {
+export function createApplication({
+  service,
+  apiKey,
+  logger = console,
+  readiness = () => ({ ready: true })
+}: ApplicationOptions) {
   const app = express();
   const authenticate = apiKeyAuth(apiKey);
   const mcp = createMcpHandler(() => createMcpServer(service), {
@@ -29,6 +35,17 @@ export function createApplication({ service, apiKey, logger = console }: Applica
 
   app.get("/health", (_request, response) => {
     response.json({ status: "ok" });
+  });
+  app.get("/ready", (_request, response) => {
+    try {
+      const result = readiness();
+      response.status(result.ready ? 200 : 503).json({
+        status: result.ready ? "ready" : "not_ready",
+        ...result.details
+      });
+    } catch {
+      response.status(503).json({ status: "not_ready", database: "error" });
+    }
   });
 
   app.use("/api", authenticate);

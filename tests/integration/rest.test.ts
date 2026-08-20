@@ -24,6 +24,7 @@ describe("REST API", () => {
 
   it("keeps health public while protecting every API and MCP route", async () => {
     await request(runtime.app).get("/health").expect(200, { status: "ok" });
+    await request(runtime.app).get("/ready").expect(200, { status: "ready" });
 
     const unauthorized = await request(runtime.app).get("/api/documents").expect(401);
     expect(unauthorized.headers["www-authenticate"]).toContain("Bearer");
@@ -42,6 +43,28 @@ describe("REST API", () => {
       .get("/api/documents")
       .set("Authorization", `Bearer ${apiKey}`)
       .expect(200);
+  });
+
+  it("reports readiness failures without affecting process liveness", async () => {
+    const unavailable = createApplication({
+      service: context.service,
+      apiKey,
+      logger: { error: vi.fn() },
+      readiness: () => ({
+        ready: false,
+        details: { database: "ok", migrations: { pending: [2] } }
+      })
+    });
+    try {
+      await request(unavailable.app).get("/health").expect(200, { status: "ok" });
+      await request(unavailable.app).get("/ready").expect(503, {
+        status: "not_ready",
+        database: "ok",
+        migrations: { pending: [2] }
+      });
+    } finally {
+      await unavailable.close();
+    }
   });
 
   it("performs CRUD, hierarchy filtering, search, revisions, and archive through REST", async () => {

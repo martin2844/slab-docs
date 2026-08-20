@@ -2,13 +2,22 @@ import "dotenv/config";
 import { createServer } from "node:http";
 import { createApplication } from "./app.js";
 import { loadConfig } from "./config.js";
-import { openDatabase } from "./db/database.js";
+import { closeDatabase, openDatabase } from "./db/database.js";
+import { getMigrationStatus } from "./db/migrations.js";
 import { DocumentService } from "./services/document-service.js";
 
 const config = loadConfig();
-const database = openDatabase(config.dbPath);
+const database = openDatabase(config.dbPath, { migrate: !config.skipMigrations });
 const service = new DocumentService(database);
-const runtime = createApplication({ service, apiKey: config.apiKey });
+const runtime = createApplication({
+  service,
+  apiKey: config.apiKey,
+  readiness: () => {
+    database.prepare("SELECT 1").get();
+    const migrations = getMigrationStatus(database);
+    return { ready: migrations.ready, details: { database: "ok", migrations } };
+  }
+});
 const httpServer = createServer(runtime.app);
 
 httpServer.listen(config.port, config.host, () => {
@@ -29,7 +38,7 @@ function shutdown(signal: string): void {
 async function closeResources(error?: Error): Promise<void> {
   try {
     await runtime.close();
-    database.close();
+    closeDatabase(database);
     if (error !== undefined) {
       console.error(error);
       process.exitCode = 1;
