@@ -4,6 +4,7 @@ export interface Document {
   title: string;
   body: string;
   parent_id: string | null;
+  collection_id: string;
   tags: string[];
   created_at: string;
   updated_at: string;
@@ -32,8 +33,10 @@ export interface SearchResult {
   title: string;
   excerpt: string;
   tags: string[];
+  collection_id: string;
   updated_at: string;
   score: number;
 }
 
-export type DocumentIdentifier = { id: string; slug?: never } | { id?: never; slug: string };
+export type DocumentIdentifier =
+  { id: string; slug?: never } | { id?: never; slug: string };

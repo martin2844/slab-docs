@@ -2,12 +2,19 @@ import { z } from "zod";
 import { normalizeTags } from "../utils/tags.js";
 
 export const documentIdSchema = z.uuid("Document id must be a UUID.");
+export const collectionIdSchema = z.union([
+  z.literal("workspace"),
+  documentIdSchema,
+]);
 export const slugSchema = z
   .string()
   .trim()
   .min(1)
   .max(100)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must use lowercase letters, numbers, and hyphens.");
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    "Slug must use lowercase letters, numbers, and hyphens.",
+  );
 
 const titleSchema = z.string().trim().min(1).max(200);
 const bodySchema = z.string().max(2_000_000);
@@ -21,8 +28,9 @@ export const createDocumentSchema = z
     slug: slugSchema.optional(),
     body: bodySchema,
     parent_id: documentIdSchema.nullable().optional(),
+    collection_id: collectionIdSchema.default("workspace"),
     tags: tagsSchema.default([]),
-    author: authorSchema.optional()
+    author: authorSchema.optional(),
   })
   .strict();
 
@@ -31,14 +39,19 @@ export const updateDocumentSchema = z
     title: titleSchema.optional(),
     body: bodySchema.optional(),
     parent_id: documentIdSchema.nullable().optional(),
+    collection_id: collectionIdSchema.optional(),
     tags: tagsSchema.optional(),
-    author: authorSchema.optional()
+    author: authorSchema.optional(),
   })
   .strict()
   .refine(
-    ({ title, body, parent_id, tags }) =>
-      title !== undefined || body !== undefined || parent_id !== undefined || tags !== undefined,
-    { message: "At least one document field must be provided." }
+    ({ title, body, parent_id, collection_id, tags }) =>
+      title !== undefined ||
+      body !== undefined ||
+      parent_id !== undefined ||
+      collection_id !== undefined ||
+      tags !== undefined,
+    { message: "At least one document field must be provided." },
   );
 
 const archivedQuerySchema = z
@@ -52,7 +65,7 @@ export const listDocumentsSchema = z
     archived: z.boolean().default(false),
     search: z.string().trim().min(1).max(500).optional(),
     limit: z.number().int().min(1).max(100).default(50),
-    offset: z.number().int().min(0).default(0)
+    offset: z.number().int().min(0).default(0),
   })
   .strict();
 
@@ -63,21 +76,21 @@ export const listDocumentsQuerySchema = z
     archived: archivedQuerySchema.default(false),
     search: z.string().trim().min(1).max(500).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
-    offset: z.coerce.number().int().min(0).default(0)
+    offset: z.coerce.number().int().min(0).default(0),
   })
   .strict();
 
 export const searchDocumentsSchema = z
   .object({
     query: z.string().trim().min(1).max(500),
-    limit: z.number().int().min(1).max(50).default(20)
+    limit: z.number().int().min(1).max(50).default(20),
   })
   .strict();
 
 export const searchDocumentsQuerySchema = z
   .object({
     q: z.string().trim().min(1).max(500),
-    limit: z.coerce.number().int().min(1).max(50).default(20)
+    limit: z.coerce.number().int().min(1).max(50).default(20),
   })
   .strict();
 
