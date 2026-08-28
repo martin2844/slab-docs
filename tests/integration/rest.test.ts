@@ -13,7 +13,7 @@ describe("REST API", () => {
     runtime = createApplication({
       service: context.service,
       apiKey,
-      logger: { error: vi.fn() }
+      logger: { error: vi.fn() },
     });
   });
 
@@ -26,11 +26,13 @@ describe("REST API", () => {
     await request(runtime.app).get("/health").expect(200, { status: "ok" });
     await request(runtime.app).get("/ready").expect(200, { status: "ready" });
 
-    const unauthorized = await request(runtime.app).get("/api/documents").expect(401);
+    const unauthorized = await request(runtime.app)
+      .get("/api/documents")
+      .expect(401);
     expect(unauthorized.headers["www-authenticate"]).toContain("Bearer");
     expect(unauthorized.body).toEqual({
       data: null,
-      error: { code: "unauthorized", message: "A valid API key is required." }
+      error: { code: "unauthorized", message: "A valid API key is required." },
     });
 
     await request(runtime.app)
@@ -38,7 +40,10 @@ describe("REST API", () => {
       .set("Content-Type", "application/json")
       .send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })
       .expect(401);
-    await request(runtime.app).get("/api/documents").set("x-api-key", apiKey).expect(200);
+    await request(runtime.app)
+      .get("/api/documents")
+      .set("x-api-key", apiKey)
+      .expect(200);
     await request(runtime.app)
       .get("/api/documents")
       .set("Authorization", `Bearer ${apiKey}`)
@@ -52,26 +57,120 @@ describe("REST API", () => {
       logger: { error: vi.fn() },
       readiness: () => ({
         ready: false,
-        details: { database: "ok", migrations: { pending: [2] } }
-      })
+        details: { database: "ok", migrations: { pending: [2] } },
+      }),
     });
     try {
-      await request(unavailable.app).get("/health").expect(200, { status: "ok" });
-      await request(unavailable.app).get("/ready").expect(503, {
-        status: "not_ready",
-        database: "ok",
-        migrations: { pending: [2] }
-      });
+      await request(unavailable.app)
+        .get("/health")
+        .expect(200, { status: "ok" });
+      await request(unavailable.app)
+        .get("/ready")
+        .expect(503, {
+          status: "not_ready",
+          database: "ok",
+          migrations: { pending: [2] },
+        });
     } finally {
       await unavailable.close();
     }
+  });
+
+  it("issues run-scoped tokens that enforce collection reads and workspace-only writes", async () => {
+    const sourceA = "10000000-0000-4000-8000-000000000001";
+    const sourceB = "10000000-0000-4000-8000-000000000002";
+    context.service.ensureCollection({
+      id: sourceA,
+      name: "Sales handbook",
+      kind: "source",
+    });
+    context.service.ensureCollection({
+      id: sourceB,
+      name: "Private finance",
+      kind: "source",
+    });
+    const workspace = context.service.create({
+      title: "Workspace truth",
+      body: "Shared",
+      tags: [],
+      collection_id: "workspace",
+    });
+    const allowed = context.service.create({
+      title: "Sales truth",
+      body: "Allowed sales content",
+      tags: [],
+      collection_id: sourceA,
+    });
+    const hidden = context.service.create({
+      title: "Finance truth",
+      body: "Hidden finance content",
+      tags: [],
+      collection_id: sourceB,
+    });
+
+    const issued = await request(runtime.app)
+      .post("/api/access-tokens")
+      .set("Authorization", `Bearer ${apiKey}`)
+      .send({
+        subject: "run:test:agent:sales",
+        readCollectionIds: ["workspace", sourceA],
+        writeCollectionIds: ["workspace"],
+        ttlSeconds: 3600,
+      })
+      .expect(201);
+    const token = issued.body.data.token as string;
+    expect(token).toMatch(/^slabdocs_v1\./);
+
+    const list = await request(runtime.app)
+      .get("/api/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(list.body.data.map(({ id }: { id: string }) => id).sort()).toEqual(
+      [workspace.id, allowed.id].sort(),
+    );
+    await request(runtime.app)
+      .get(`/api/documents/${hidden.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(404);
+    await request(runtime.app)
+      .get("/api/search?q=finance")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect(({ body }) => expect(body.data).toEqual([]));
+
+    await request(runtime.app)
+      .patch(`/api/documents/${allowed.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ body: "Attempted overwrite" })
+      .expect(403);
+    expect(context.service.get({ id: allowed.id }).body).toBe(
+      "Allowed sales content",
+    );
+    await request(runtime.app)
+      .patch(`/api/documents/${workspace.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ body: "Agent-authored workspace update" })
+      .expect(200);
+    await request(runtime.app)
+      .post("/api/access-tokens")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        subject: "escalation",
+        readCollectionIds: ["workspace", sourceB],
+        writeCollectionIds: ["workspace"],
+      })
+      .expect(403);
   });
 
   it("performs CRUD, hierarchy filtering, search, revisions, and archive through REST", async () => {
     const rootResponse = await request(runtime.app)
       .post("/api/documents")
       .set("Authorization", `Bearer ${apiKey}`)
-      .send({ title: "Company handbook", body: "# Handbook", tags: ["company"] })
+      .send({
+        title: "Company handbook",
+        body: "# Handbook",
+        tags: ["company"],
+      })
       .expect(201);
     const root = rootResponse.body.data as { id: string; slug: string };
 
@@ -83,7 +182,7 @@ describe("REST API", () => {
         body: "Enterprise pricing is documented here.",
         parent_id: root.id,
         tags: ["sales"],
-        author: "Martin"
+        author: "Martin",
       })
       .expect(201);
     const child = childResponse.body.data as { id: string; slug: string };
@@ -115,7 +214,9 @@ describe("REST API", () => {
       .get("/api/search?q=wholesale&limit=5")
       .set("x-api-key", apiKey)
       .expect(200);
-    expect(search.body.data).toMatchObject([{ id: child.id, slug: child.slug }]);
+    expect(search.body.data).toMatchObject([
+      { id: child.id, slug: child.slug },
+    ]);
 
     const filteredSearch = await request(runtime.app)
       .get("/api/documents?search=wholesale")
@@ -127,7 +228,9 @@ describe("REST API", () => {
       .get(`/api/documents/${child.id}/revisions`)
       .set("x-api-key", apiKey)
       .expect(200);
-    expect(revisions.body.data.map(({ revision }: { revision: number }) => revision)).toEqual([2, 1]);
+    expect(
+      revisions.body.data.map(({ revision }: { revision: number }) => revision),
+    ).toEqual([2, 1]);
 
     await request(runtime.app)
       .get(`/api/documents/${child.id}/revisions/1`)
@@ -164,14 +267,19 @@ describe("REST API", () => {
       .set("Content-Type", "application/json")
       .send("{")
       .expect(400)
-      .expect(({ body }) => expect(body.error.message).toContain("not valid JSON"));
+      .expect(({ body }) =>
+        expect(body.error.message).toContain("not valid JSON"),
+      );
 
     const invalid = await request(runtime.app)
       .post("/api/documents")
       .set("x-api-key", apiKey)
       .send({ title: "", body: "", unexpected: true })
       .expect(400);
-    expect(invalid.body.error).toMatchObject({ code: "bad_request", details: expect.any(Array) });
+    expect(invalid.body.error).toMatchObject({
+      code: "bad_request",
+      details: expect.any(Array),
+    });
 
     const created = await request(runtime.app)
       .post("/api/documents")

@@ -41,7 +41,7 @@ export const migrations: readonly Migration[] = [
 
       CREATE INDEX document_revisions_document_id_idx
         ON document_revisions(document_id, revision DESC);
-    `
+    `,
   },
   {
     version: 2,
@@ -74,8 +74,93 @@ export const migrations: readonly Migration[] = [
       END;
 
       INSERT INTO documents_fts(documents_fts) VALUES ('rebuild');
-    `
-  }
+    `,
+  },
+  {
+    version: 3,
+    name: "document_collections",
+    sql: `
+      CREATE TABLE document_collections (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('workspace', 'source')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        archived_at TEXT
+      );
+
+      INSERT INTO document_collections(id, name, kind, created_at, updated_at)
+      VALUES (
+        'workspace', 'Workspace', 'workspace',
+        strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+        strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      );
+
+      ALTER TABLE documents
+        ADD COLUMN collection_id TEXT NOT NULL DEFAULT 'workspace';
+
+      INSERT OR IGNORE INTO document_collections(id, name, kind, created_at, updated_at)
+      SELECT DISTINCT
+        substr(json_each.value, 11), 'Imported source', 'source',
+        strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+        strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      FROM documents, json_each(documents.tags)
+      WHERE json_each.value LIKE 'source-id:%'
+        AND length(json_each.value) = 46
+        AND substr(json_each.value, 19, 1) = '-'
+        AND substr(json_each.value, 24, 1) = '-'
+        AND substr(json_each.value, 29, 1) = '-'
+        AND substr(json_each.value, 34, 1) = '-'
+        AND lower(replace(substr(json_each.value, 11), '-', '')) NOT GLOB '*[^0-9a-f]*';
+
+      UPDATE documents
+      SET collection_id = (
+        SELECT substr(json_each.value, 11)
+        FROM json_each(documents.tags)
+        WHERE json_each.value LIKE 'source-id:%'
+          AND length(json_each.value) = 46
+          AND substr(json_each.value, 19, 1) = '-'
+          AND substr(json_each.value, 24, 1) = '-'
+          AND substr(json_each.value, 29, 1) = '-'
+          AND substr(json_each.value, 34, 1) = '-'
+          AND lower(replace(substr(json_each.value, 11), '-', '')) NOT GLOB '*[^0-9a-f]*'
+        ORDER BY json_each.value
+        LIMIT 1
+      )
+      WHERE EXISTS (
+        SELECT 1
+        FROM json_each(documents.tags)
+        WHERE json_each.value LIKE 'source-id:%'
+          AND length(json_each.value) = 46
+          AND substr(json_each.value, 19, 1) = '-'
+          AND substr(json_each.value, 24, 1) = '-'
+          AND substr(json_each.value, 29, 1) = '-'
+          AND substr(json_each.value, 34, 1) = '-'
+          AND lower(replace(substr(json_each.value, 11), '-', '')) NOT GLOB '*[^0-9a-f]*'
+      );
+
+      CREATE INDEX documents_collection_id_idx ON documents(collection_id);
+      CREATE INDEX document_collections_archived_at_idx ON document_collections(archived_at);
+
+      CREATE TRIGGER documents_collection_insert_guard
+      BEFORE INSERT ON documents
+      WHEN NOT EXISTS (
+        SELECT 1 FROM document_collections WHERE id = new.collection_id
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'document collection does not exist');
+      END;
+
+      CREATE TRIGGER documents_collection_update_guard
+      BEFORE UPDATE OF collection_id ON documents
+      WHEN NOT EXISTS (
+        SELECT 1 FROM document_collections WHERE id = new.collection_id
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'document collection does not exist');
+      END;
+    `,
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {
@@ -87,17 +172,23 @@ export function runMigrations(database: Database.Database): void {
     );
   `);
 
-  const appliedRows = database.prepare("SELECT version FROM schema_migrations").all() as Array<{
+  const appliedRows = database
+    .prepare("SELECT version FROM schema_migrations")
+    .all() as Array<{
     version: number;
   }>;
   const applied = new Set(appliedRows.map(({ version }) => version));
   const insertMigration = database.prepare(
-    "INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)"
+    "INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)",
   );
 
   const applyMigration = database.transaction((migration: Migration) => {
     database.exec(migration.sql);
-    insertMigration.run(migration.version, migration.name, new Date().toISOString());
+    insertMigration.run(
+      migration.version,
+      migration.name,
+      new Date().toISOString(),
+    );
   });
 
   for (const migration of migrations) {
@@ -112,13 +203,19 @@ export function getMigrationStatus(database: Database.Database): {
   pending: number[];
 } {
   const expected = migrations.map(({ version }) => version);
-  const tableExists = database.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
-  ).get();
+  const tableExists = database
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'",
+    )
+    .get();
   const applied = tableExists
-    ? (database.prepare("SELECT version FROM schema_migrations ORDER BY version").all() as Array<{
-        version: number;
-      }>).map(({ version }) => version)
+    ? (
+        database
+          .prepare("SELECT version FROM schema_migrations ORDER BY version")
+          .all() as Array<{
+          version: number;
+        }>
+      ).map(({ version }) => version)
     : [];
   const appliedVersions = new Set(applied);
   const pending = expected.filter((version) => !appliedVersions.has(version));

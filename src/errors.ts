@@ -1,6 +1,7 @@
 export type ErrorCode =
   | "bad_request"
   | "conflict"
+  | "forbidden"
   | "internal_error"
   | "not_found"
   | "unauthorized";
@@ -16,7 +17,7 @@ export class AppError extends Error {
     public readonly status: number,
     public readonly code: ErrorCode,
     message: string,
-    public readonly details?: unknown
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = new.target.name;
@@ -32,6 +33,14 @@ export class BadRequestError extends AppError {
 export class UnauthorizedError extends AppError {
   public constructor(message = "A valid API key is required.") {
     super(401, "unauthorized", message);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  public constructor(
+    message = "This token does not grant access to that collection.",
+  ) {
+    super(403, "forbidden", message);
   }
 }
 

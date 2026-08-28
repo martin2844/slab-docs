@@ -38,20 +38,28 @@ serving; readiness also verifies SQLite access and that every packaged migration
 has been applied. The process refuses to start when neither `DOCS_API_KEY` nor
 `DOCS_API_KEY_FILE` provides a secret.
 
+The configured key is the control-plane credential and has full collection
+access. A master-authenticated `POST /api/access-tokens` request can issue a
+signed token with explicit read/write collection IDs for one run. Scoped tokens
+expire after at most 24 hours, cannot mint other tokens, and are enforced by
+REST and MCP alike. `list`, search, direct reads, revisions, updates, and archive
+operations all use the same authorization boundary.
+
 ## REST
 
 All REST responses except health use `{ "data": ..., "error": null }` or `{ "data": null, "error": ... }`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/documents` | Create a document and its initial revision |
-| `GET` | `/api/documents` | List and filter documents |
-| `GET` | `/api/documents/:id` | Read a document |
-| `PATCH` | `/api/documents/:id` | Update a document |
-| `DELETE` | `/api/documents/:id` | Archive without deleting |
-| `GET` | `/api/search?q=` | Search with FTS5 |
-| `GET` | `/api/documents/:id/revisions` | List revisions |
-| `GET` | `/api/documents/:id/revisions/:revision` | Read a revision |
+| Method   | Path                                     | Purpose                                                  |
+| -------- | ---------------------------------------- | -------------------------------------------------------- |
+| `POST`   | `/api/documents`                         | Create a document and its initial revision               |
+| `GET`    | `/api/documents`                         | List and filter documents                                |
+| `GET`    | `/api/documents/:id`                     | Read a document                                          |
+| `PATCH`  | `/api/documents/:id`                     | Update a document                                        |
+| `DELETE` | `/api/documents/:id`                     | Archive without deleting                                 |
+| `GET`    | `/api/search?q=`                         | Search with FTS5                                         |
+| `GET`    | `/api/documents/:id/revisions`           | List revisions                                           |
+| `GET`    | `/api/documents/:id/revisions/:revision` | Read a revision                                          |
+| `POST`   | `/api/access-tokens`                     | Issue a short-lived collection-scoped token (admin only) |
 
 List filters: `parent_id`, `tag`, `archived`, `search`, `limit`, and `offset`.
 
@@ -87,6 +95,10 @@ Available tools:
 - `list_doc_revisions`
 - `get_doc_revision`
 
+The admin credential additionally sees `ensure_collection` and
+`archive_collection`. Scoped agent tokens never receive those tools. Documents
+belong to a `collection_id`; `workspace` is the default shared collection.
+
 Each tool returns consistent JSON as both text content and `structuredContent`. `get_doc`, `update_doc`, `archive_doc`, and the revision tools accept exactly one of `id` or `slug`.
 
 ## Development
@@ -108,20 +120,23 @@ npm run lint
 npm run build
 ```
 
-The suite covers utilities, validation, CRUD, hierarchy and cycle handling, slug uniqueness, archiving, revisions, FTS5, authentication, REST, all eight MCP tools, Streamable HTTP, migrations, and persistence across restarts.
+The suite covers utilities, validation, CRUD, hierarchy and cycle handling,
+slug uniqueness, archiving, revisions, FTS5, collection-scoped authorization,
+token tamper/expiry handling, REST, MCP, migrations, and persistence across
+restarts.
 
 ## Environment variables
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `BIND_ADDRESS` | `127.0.0.1` | Host address published by Docker Compose |
-| `PORT` | `6980` | HTTP port |
-| `HOST` | `0.0.0.0` | Listening interface |
-| `DOCS_API_KEY` | — | Required secret |
-| `DOCS_API_KEY_FILE` | — | Read the secret from a mounted file; mutually exclusive with `DOCS_API_KEY` |
-| `DOCS_DB_PATH` | `/data/slab-docs.db` | SQLite file |
-| `NODE_ENV` | `development` | Runtime environment |
-| `SKIP_MIGRATIONS` | `false` | Set on the server only after the one-shot migration command succeeds |
+| Variable            | Default              | Description                                                                 |
+| ------------------- | -------------------- | --------------------------------------------------------------------------- |
+| `BIND_ADDRESS`      | `127.0.0.1`          | Host address published by Docker Compose                                    |
+| `PORT`              | `6980`               | HTTP port                                                                   |
+| `HOST`              | `0.0.0.0`            | Listening interface                                                         |
+| `DOCS_API_KEY`      | —                    | Required secret                                                             |
+| `DOCS_API_KEY_FILE` | —                    | Read the secret from a mounted file; mutually exclusive with `DOCS_API_KEY` |
+| `DOCS_DB_PATH`      | `/data/slab-docs.db` | SQLite file                                                                 |
+| `NODE_ENV`          | `development`        | Runtime environment                                                         |
+| `SKIP_MIGRATIONS`   | `false`              | Set on the server only after the one-shot migration command succeeds        |
 
 Run deterministic production migrations with:
 
