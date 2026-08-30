@@ -147,3 +147,7 @@ docker run --rm -v slab-docs-data:/data ghcr.io/martin2844/slab-docs:<version> \
 
 The unified self-hosted stack mounts `DOCS_API_KEY_FILE` from a Compose secret.
 The direct environment variable remains available for local development.
+
+## License
+
+[MIT](LICENSE)

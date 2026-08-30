@@ -1,6 +1,7 @@
 {
   "name": "slab-docs",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "description": "A small, reliable, headless knowledge base for humans and AI agents.",
   "type": "module",
