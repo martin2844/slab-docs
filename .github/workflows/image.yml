@@ -104,7 +104,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=Slab Docs
             org.opencontainers.image.description=Headless knowledge base and MCP server for Slab
-            org.opencontainers.image.licenses=NOASSERTION
+            org.opencontainers.image.licenses=MIT
       - id: build
         uses: docker/build-push-action@v6
         with:
