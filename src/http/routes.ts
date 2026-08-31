@@ -79,7 +79,11 @@ export function createSearchRouter(service: DocumentService): Router {
     response.json(
       success(
         service.search(
-          { query: input.q, limit: input.limit },
+          {
+            query: input.q,
+            collection_id: input.collection_id,
+            limit: input.limit,
+          },
           documentAccess(response.locals),
         ),
       ),

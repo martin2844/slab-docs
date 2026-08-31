@@ -61,6 +61,7 @@ const archivedQuerySchema = z
 export const listDocumentsSchema = z
   .object({
     parent_id: documentIdSchema.nullable().optional(),
+    collection_id: collectionIdSchema.optional(),
     tag: tagSchema.optional(),
     archived: z.boolean().default(false),
     search: z.string().trim().min(1).max(500).optional(),
@@ -72,6 +73,7 @@ export const listDocumentsSchema = z
 export const listDocumentsQuerySchema = z
   .object({
     parent_id: documentIdSchema.optional(),
+    collection_id: collectionIdSchema.optional(),
     tag: tagSchema.optional(),
     archived: archivedQuerySchema.default(false),
     search: z.string().trim().min(1).max(500).optional(),
@@ -83,6 +85,7 @@ export const listDocumentsQuerySchema = z
 export const searchDocumentsSchema = z
   .object({
     query: z.string().trim().min(1).max(500),
+    collection_id: collectionIdSchema.optional(),
     limit: z.number().int().min(1).max(50).default(20),
   })
   .strict();
@@ -90,6 +93,7 @@ export const searchDocumentsSchema = z
 export const searchDocumentsQuerySchema = z
   .object({
     q: z.string().trim().min(1).max(500),
+    collection_id: collectionIdSchema.optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
   })
   .strict();

@@ -75,6 +75,17 @@ function appendCollectionScope(
   parameters.push(...access.readCollectionIds);
 }
 
+function appendCollectionFilter(
+  collectionId: string | undefined,
+  alias: string,
+  conditions: string[],
+  parameters: QueryValue[],
+): void {
+  if (collectionId === undefined) return;
+  conditions.push(`${alias}.collection_id = ?`);
+  parameters.push(collectionId);
+}
+
 function mapDocument(row: DocumentRow): Document {
   return { ...row, tags: deserializeTags(row.tags) };
 }
@@ -197,6 +208,12 @@ export class DocumentService {
       parameters.push(input.tag);
     }
 
+    appendCollectionFilter(
+      input.collection_id,
+      "d",
+      conditions,
+      parameters,
+    );
     appendCollectionScope(access, "d", conditions, parameters);
 
     conditions.push(
@@ -237,6 +254,12 @@ export class DocumentService {
   ): SearchResult[] {
     const conditions = ["documents_fts MATCH ?", "d.archived_at IS NULL"];
     const parameters: QueryValue[] = [buildFtsQuery(input.query)];
+    appendCollectionFilter(
+      input.collection_id,
+      "d",
+      conditions,
+      parameters,
+    );
     appendCollectionScope(access, "d", conditions, parameters);
     parameters.push(input.limit);
     const rows = this.database

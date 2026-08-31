@@ -76,6 +76,19 @@ describe("MCP tools", () => {
       expect(createResult.structuredContent).toBeUndefined();
       expect(payload(createResult).data).not.toHaveProperty("body");
 
+      const sourceId = "40000000-0000-4000-8000-000000000002";
+      context.service.ensureCollection({
+        id: sourceId,
+        name: "Repository source",
+        kind: "source",
+      });
+      const sourceDocument = context.service.create({
+        title: "Repository runbook",
+        body: "Repository internals",
+        tags: ["repository-code"],
+        collection_id: sourceId,
+      });
+
       const listResult = await client.callTool({
         name: "list_docs",
         arguments: { tag: "sales", limit: 10 },
@@ -84,6 +97,16 @@ describe("MCP tools", () => {
       expect((payload(listResult).data as unknown[])[0]).not.toHaveProperty(
         "body",
       );
+
+      const workspaceList = await client.callTool({
+        name: "list_docs",
+        arguments: { collection_id: "workspace", limit: 10 },
+      });
+      expect(
+        (payload(workspaceList).data as Array<{ id: string }>).map(
+          ({ id }) => id,
+        ),
+      ).toEqual([created.id]);
 
       const searchResult = await client.callTool({
         name: "search_docs",
@@ -95,6 +118,18 @@ describe("MCP tools", () => {
       expect((payload(searchResult).data as unknown[])[0]).not.toHaveProperty(
         "body",
       );
+
+      const sourceSearch = await client.callTool({
+        name: "search_docs",
+        arguments: {
+          query: "repository",
+          collection_id: sourceId,
+          limit: 5,
+        },
+      });
+      expect(payload(sourceSearch).data).toMatchObject([
+        { id: sourceDocument.id },
+      ]);
 
       const getResult = await client.callTool({
         name: "get_doc",

@@ -128,6 +128,23 @@ describe("REST API", () => {
     expect(list.body.data.map(({ id }: { id: string }) => id).sort()).toEqual(
       [workspace.id, allowed.id].sort(),
     );
+    const workspaceList = await request(runtime.app)
+      .get("/api/documents?collection_id=workspace")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(workspaceList.body.data.map(({ id }: { id: string }) => id)).toEqual(
+      [workspace.id],
+    );
+    const sourceSearch = await request(runtime.app)
+      .get(`/api/search?q=sales&collection_id=${sourceA}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(sourceSearch.body.data).toMatchObject([{ id: allowed.id }]);
+    const inaccessibleCollection = await request(runtime.app)
+      .get(`/api/documents?collection_id=${sourceB}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(inaccessibleCollection.body.data).toEqual([]);
     await request(runtime.app)
       .get(`/api/documents/${hidden.id}`)
       .set("Authorization", `Bearer ${token}`)

@@ -99,7 +99,7 @@ export function createMcpServer(
     {
       title: "List documents",
       description:
-        "List document metadata with optional hierarchy, tag, archive, and pagination filters. Does not return document bodies. Use search_docs to discover relevant documents and get_doc to read one complete document.",
+        "List document metadata with optional collection, hierarchy, tag, archive, and pagination filters. Does not return document bodies. Use search_docs to discover relevant documents and get_doc to read one complete document.",
       inputSchema: listDocsSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -111,7 +111,7 @@ export function createMcpServer(
     {
       title: "Search documents",
       description:
-        "Search active document titles, Markdown bodies, and tags. Returns metadata, a short excerpt, and relevance score; use get_doc to read one complete document.",
+        "Search active document titles, Markdown bodies, and tags, optionally within one collection. Returns metadata, a short excerpt, and relevance score; use get_doc to read one complete document.",
       inputSchema: searchDocumentsSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
