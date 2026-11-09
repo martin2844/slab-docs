@@ -161,6 +161,75 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 4,
+    name: "run_document_changes",
+    sql: `
+      ALTER TABLE documents ADD COLUMN mutation_version INTEGER NOT NULL DEFAULT 1;
+      DROP TRIGGER documents_fts_update;
+      CREATE TRIGGER documents_fts_update AFTER UPDATE OF title,body,tags ON documents BEGIN
+        INSERT INTO documents_fts(documents_fts,rowid,title,body,tags) VALUES ('delete',old.rowid,old.title,old.body,old.tags);
+        INSERT INTO documents_fts(rowid,title,body,tags) VALUES (new.rowid,new.title,new.body,new.tags);
+      END;
+      CREATE TRIGGER documents_mutation_version AFTER UPDATE OF title, body, parent_id, tags, collection_id, archived_at ON documents
+      WHEN old.title IS NOT new.title OR old.body IS NOT new.body OR old.parent_id IS NOT new.parent_id
+        OR old.tags IS NOT new.tags OR old.collection_id IS NOT new.collection_id OR old.archived_at IS NOT new.archived_at
+      BEGIN UPDATE documents SET mutation_version=old.mutation_version+1 WHERE id=new.id; END;
+      CREATE TABLE document_run_sessions (run_id TEXT PRIMARY KEY, closed_at TEXT);
+      CREATE TABLE document_run_changes (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL REFERENCES document_run_sessions(run_id),
+        document_id TEXT NOT NULL REFERENCES documents(id),
+        before_json TEXT,
+        after_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX document_run_changes_run ON document_run_changes(run_id,document_id,sequence);
+      CREATE TABLE document_run_undos (
+        run_id TEXT NOT NULL REFERENCES document_run_sessions(run_id),
+        document_id TEXT NOT NULL REFERENCES documents(id),
+        before_json TEXT NOT NULL,
+        after_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(run_id,document_id)
+      );
+    `,
+  },
+  {
+    version: 5,
+    name: "document_commits_and_drafts",
+    sql: `
+      ALTER TABLE document_run_sessions ADD COLUMN editing_mode TEXT NOT NULL DEFAULT 'direct';
+      ALTER TABLE document_run_sessions ADD COLUMN state TEXT NOT NULL DEFAULT 'editing';
+      ALTER TABLE document_run_sessions ADD COLUMN author TEXT NOT NULL DEFAULT 'Agent';
+      ALTER TABLE document_run_sessions ADD COLUMN commit_id TEXT;
+      ALTER TABLE document_run_sessions ADD COLUMN merge_error TEXT;
+      CREATE TABLE document_drafts (
+        run_id TEXT NOT NULL REFERENCES document_run_sessions(run_id),
+        document_id TEXT NOT NULL,
+        before_json TEXT,
+        after_json TEXT NOT NULL,
+        PRIMARY KEY(run_id,document_id)
+      );
+      CREATE TABLE document_commits (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        run_id TEXT,
+        author TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reverts_id TEXT REFERENCES document_commits(id)
+      );
+      CREATE TABLE document_commit_changes (
+        commit_id TEXT NOT NULL REFERENCES document_commits(id),
+        document_id TEXT NOT NULL REFERENCES documents(id),
+        before_json TEXT,
+        after_json TEXT NOT NULL,
+        PRIMARY KEY(commit_id,document_id)
+      );
+      CREATE INDEX document_commit_changes_document ON document_commit_changes(document_id);
+    `,
+  },
 ];
 
 export function runMigrations(database: Database.Database): void {

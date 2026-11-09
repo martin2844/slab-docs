@@ -12,6 +12,7 @@ const payloadSchema = z
   .object({
     v: z.literal(1),
     sub: z.string().trim().min(1).max(200),
+    runId: z.string().uuid().optional(),
     iat: z.number().int().positive(),
     exp: z.number().int().positive(),
     read: z.array(z.string().trim().min(1).max(100)).max(200),
@@ -21,6 +22,7 @@ const payloadSchema = z
 
 export interface IssueAccessTokenInput {
   subject: string;
+  runId?: string | undefined;
   readCollectionIds: readonly string[];
   writeCollectionIds: readonly string[];
   ttlSeconds?: number | undefined;
@@ -58,6 +60,7 @@ export class AccessTokenService {
     const payload = payloadSchema.parse({
       v: 1,
       sub: input.subject,
+      ...(input.runId ? { runId: input.runId } : {}),
       iat: issuedAt,
       exp: issuedAt + ttlSeconds,
       read: unique(input.readCollectionIds),
@@ -119,6 +122,7 @@ export class AccessTokenService {
     return {
       kind: "scoped",
       subject: parsed.sub,
+      ...(parsed.runId ? { runId: parsed.runId } : {}),
       readCollectionIds,
       writeCollectionIds,
     };
@@ -134,6 +138,7 @@ export class AccessTokenService {
       scopes: ["docs:scoped"],
       extra: {
         subject: access.subject,
+        ...(access.runId ? { runId: access.runId } : {}),
         readCollectionIds: [...access.readCollectionIds],
         writeCollectionIds: [...access.writeCollectionIds],
       },
@@ -145,6 +150,7 @@ export class AccessTokenService {
     const parsed = z
       .object({
         subject: z.string(),
+        runId: z.string().uuid().optional(),
         readCollectionIds: z.array(z.string()),
         writeCollectionIds: z.array(z.string()),
       })
@@ -153,6 +159,7 @@ export class AccessTokenService {
     return {
       kind: "scoped",
       subject: parsed.data.subject,
+      ...(parsed.data.runId ? { runId: parsed.data.runId } : {}),
       readCollectionIds: unique(parsed.data.readCollectionIds),
       writeCollectionIds: unique(parsed.data.writeCollectionIds),
     };

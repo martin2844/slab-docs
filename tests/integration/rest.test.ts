@@ -50,6 +50,84 @@ describe("REST API", () => {
       .expect(200);
   });
 
+  it("records writes from run tokens, protects the journal and prevents writes after closing", async () => {
+    const runId = "00000000-0000-4000-8000-999999999999";
+    const issued = await request(runtime.app)
+      .post("/api/access-tokens")
+      .set("Authorization", `Bearer ${apiKey}`)
+      .send({
+        subject: `run:${runId}`,
+        runId,
+        readCollectionIds: ["workspace"],
+        writeCollectionIds: ["workspace"],
+      })
+      .expect(201);
+    expect(issued.body.data.features.runChanges).toBe(1);
+    const token = issued.body.data.token as string;
+    const created = await request(runtime.app)
+      .post("/api/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Run document", body: "Original" })
+      .expect(201);
+    const id = created.body.data.id as string;
+    await request(runtime.app)
+      .patch(`/api/documents/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ body: "Changed", runId: "forged" })
+      .expect(400);
+    await request(runtime.app)
+      .patch(`/api/documents/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ body: "Changed" })
+      .expect(200);
+    await request(runtime.app).get(`/api/run-changes/${runId}`).expect(401);
+    await request(runtime.app)
+      .get(`/api/run-changes/${runId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+    await request(runtime.app)
+      .post(`/api/run-changes/${runId}/close`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({})
+      .expect(403);
+    await request(runtime.app)
+      .post(`/api/run-changes/${runId}/undo`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({})
+      .expect(403);
+    const changes = await request(runtime.app)
+      .get(`/api/run-changes/${runId}`)
+      .set("Authorization", `Bearer ${apiKey}`)
+      .expect(200);
+    expect(changes.body.data.changes[0]).toMatchObject({
+      documentId: id,
+      before: null,
+      after: { body: "Changed" },
+    });
+    await request(runtime.app)
+      .post(`/api/run-changes/${runId}/undo`)
+      .set("Authorization", `Bearer ${apiKey}`)
+      .send({})
+      .expect(409);
+    await request(runtime.app)
+      .post(`/api/run-changes/${runId}/close`)
+      .set("Authorization", `Bearer ${apiKey}`)
+      .send({})
+      .expect(200);
+    await request(runtime.app)
+      .patch(`/api/documents/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ body: "Late" })
+      .expect(403);
+    const undone = await request(runtime.app)
+      .post(`/api/run-changes/${runId}/undo`)
+      .set("Authorization", `Bearer ${apiKey}`)
+      .send({})
+      .expect(200);
+    expect(undone.body.data.changes[0].undoneAt).toBeTruthy();
+    expect(context.service.get({ id }).archived_at).toBeTruthy();
+  });
+
   it("reports readiness failures without affecting process liveness", async () => {
     const unavailable = createApplication({
       service: context.service,

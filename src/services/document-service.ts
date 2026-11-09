@@ -29,9 +29,11 @@ import type {
 import { buildFtsQuery } from "../utils/search.js";
 import { slugify, slugWithSuffix } from "../utils/slug.js";
 import { deserializeTags, serializeTags } from "../utils/tags.js";
+import { RunChangeJournal } from "./run-change-journal.js";
 
 interface DocumentRow extends Omit<Document, "tags"> {
   tags: string;
+  mutation_version: number;
 }
 
 interface DocumentSummaryRow extends Omit<DocumentSummary, "tags"> {
@@ -87,7 +89,13 @@ function appendCollectionFilter(
 }
 
 function mapDocument(row: DocumentRow): Document {
-  return { ...row, tags: deserializeTags(row.tags) };
+  const { mutation_version, ...document } = row;
+  void mutation_version;
+  return {
+    ...document,
+    version: mutation_version,
+    tags: deserializeTags(row.tags),
+  };
 }
 
 function mapDocumentSummary(row: DocumentSummaryRow): DocumentSummary {
@@ -109,6 +117,7 @@ function changedTags(
 }
 
 export class DocumentService {
+  public readonly runChanges: RunChangeJournal;
   private readonly now: () => string;
   private readonly createId: () => string;
 
@@ -118,12 +127,17 @@ export class DocumentService {
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.createId = options.id ?? randomUUID;
+    this.runChanges = new RunChangeJournal(database, this.now);
   }
 
   public create(
     input: CreateDocumentInput,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): Document {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.create(input, access),
+      );
     const createDocument = this.database.transaction(() => {
       this.requireWritableCollection(input.collection_id, access);
       if (input.parent_id !== undefined && input.parent_id !== null) {
@@ -166,6 +180,7 @@ export class DocumentService {
         );
 
       this.insertRevision(id, 1, input.title, input.body, author, timestamp);
+      this.runChanges.record(access, null, id, author);
       return this.requireDocument({ id }, access);
     });
 
@@ -183,6 +198,10 @@ export class DocumentService {
     input: ListDocumentsInput,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): DocumentSummary[] {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.list(input, access),
+      );
     const joins: string[] = [];
     const conditions: string[] = [];
     const parameters: QueryValue[] = [];
@@ -208,12 +227,7 @@ export class DocumentService {
       parameters.push(input.tag);
     }
 
-    appendCollectionFilter(
-      input.collection_id,
-      "d",
-      conditions,
-      parameters,
-    );
+    appendCollectionFilter(input.collection_id, "d", conditions, parameters);
     appendCollectionScope(access, "d", conditions, parameters);
 
     conditions.push(
@@ -252,14 +266,13 @@ export class DocumentService {
     input: SearchDocumentsInput,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): SearchResult[] {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.search(input, access),
+      );
     const conditions = ["documents_fts MATCH ?", "d.archived_at IS NULL"];
     const parameters: QueryValue[] = [buildFtsQuery(input.query)];
-    appendCollectionFilter(
-      input.collection_id,
-      "d",
-      conditions,
-      parameters,
-    );
+    appendCollectionFilter(input.collection_id, "d", conditions, parameters);
     appendCollectionScope(access, "d", conditions, parameters);
     parameters.push(input.limit);
     const rows = this.database
@@ -292,6 +305,10 @@ export class DocumentService {
     identifier: DocumentIdentifier,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): Document {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.get(identifier, access),
+      );
     return this.requireDocument(identifier, access);
   }
 
@@ -300,8 +317,19 @@ export class DocumentService {
     input: UpdateDocumentInput,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): Document {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.update(identifier, input, access),
+      );
     const updateDocument = this.database.transaction(() => {
       const current = this.requireDocument(identifier, access);
+      if (
+        input.expected_version !== undefined &&
+        current.version !== input.expected_version
+      )
+        throw new ConflictError(
+          "This document changed while you were editing. Reload the current version before saving.",
+        );
       this.requireWritableCollection(current.collection_id, access);
       const nextTitle = input.title ?? current.title;
       const nextBody = input.body ?? current.body;
@@ -329,6 +357,7 @@ export class DocumentService {
         changedTags(nextTags, current.tags);
       if (!documentChanged) return current;
 
+      const before = this.runChanges.snapshot(current.id);
       const timestamp = this.now();
       this.database
         .prepare(
@@ -358,6 +387,7 @@ export class DocumentService {
         );
       }
 
+      this.runChanges.record(access, before, current.id, input.author);
       return this.requireDocument({ id: current.id }, access);
     });
 
@@ -368,17 +398,23 @@ export class DocumentService {
     identifier: DocumentIdentifier,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): Document {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.archive(identifier, access),
+      );
     const archiveDocument = this.database.transaction(() => {
       const current = this.requireDocument(identifier, access);
       this.requireWritableCollection(current.collection_id, access);
       if (current.archived_at !== null) return current;
 
+      const before = this.runChanges.snapshot(current.id);
       const timestamp = this.now();
       this.database
         .prepare(
           "UPDATE documents SET archived_at = ?, updated_at = ? WHERE id = ?",
         )
         .run(timestamp, timestamp, current.id);
+      this.runChanges.record(access, before, current.id);
       return this.requireDocument({ id: current.id }, access);
     });
 
@@ -389,6 +425,10 @@ export class DocumentService {
     identifier: DocumentIdentifier,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): DocumentRevision[] {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.listRevisions(identifier, access),
+      );
     const document = this.requireDocument(identifier, access);
     return this.database
       .prepare(
@@ -405,6 +445,10 @@ export class DocumentService {
     revision: number,
     access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
   ): DocumentRevision {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.getRevision(identifier, revision, access),
+      );
     const document = this.requireDocument(identifier, access);
     const row = this.database
       .prepare(
@@ -420,6 +464,20 @@ export class DocumentService {
       );
     }
     return row;
+  }
+
+  public revertCommit(
+    id: string,
+    access: DocumentAccess = ADMIN_DOCUMENT_ACCESS,
+  ): ReturnType<RunChangeJournal["history"]["revert"]> {
+    if (this.runChanges.drafts.enabled(access))
+      return this.runChanges.drafts.withOverlay(access, () =>
+        this.revertCommit(id, access),
+      );
+    this.runChanges.assertWritable(access);
+    return this.runChanges.history.revert(id, access, ({ before, after }) => {
+      this.runChanges.record(access, before, after.id, "Owner", true);
+    });
   }
 
   private nextAvailableSlug(base: string): string {
@@ -563,6 +621,7 @@ export class DocumentService {
     collectionId: string,
     access: DocumentAccess,
   ): void {
+    this.runChanges.assertWritable(access);
     if (!canWriteCollection(access, collectionId)) {
       throw new ForbiddenError();
     }

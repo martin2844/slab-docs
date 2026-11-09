@@ -1,4 +1,5 @@
 export interface Document {
+  version?: number;
   id: string;
   slug: string;
   title: string;

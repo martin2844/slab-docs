@@ -7,6 +7,7 @@ export interface AdminDocumentAccess {
 export interface ScopedDocumentAccess {
   kind: "scoped";
   subject: string;
+  runId?: string;
   readCollectionIds: readonly string[];
   writeCollectionIds: readonly string[];
 }

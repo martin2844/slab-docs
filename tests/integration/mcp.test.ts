@@ -45,6 +45,9 @@ describe("MCP tools", () => {
       const tools = await client.listTools();
       expect(tools.tools.map(({ name }) => name).sort()).toEqual(
         [
+          "list_doc_commits",
+          "get_doc_commit",
+          "revert_doc_commit",
           "archive_collection",
           "archive_doc",
           "create_doc",
@@ -235,7 +238,7 @@ describe("MCP tools", () => {
       const names = (await client.listTools()).tools.map(({ name }) => name);
       expect(names).not.toContain("ensure_collection");
       expect(names).not.toContain("archive_collection");
-      expect(names).toHaveLength(8);
+      expect(names).toHaveLength(11);
     } finally {
       await client.close();
       await server.close();
@@ -277,7 +280,7 @@ describe("MCP tools", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(10);
+      expect(tools.tools).toHaveLength(13);
       const result = await client.callTool({
         name: "create_doc",
         arguments: { title: "Remote document", body: "Created over HTTP" },
@@ -312,7 +315,7 @@ describe("MCP tools", () => {
       });
       await scopedClient.connect(scopedTransport);
       try {
-        expect((await scopedClient.listTools()).tools).toHaveLength(8);
+        expect((await scopedClient.listTools()).tools).toHaveLength(11);
         const denied = await scopedClient.callTool({
           name: "get_doc",
           arguments: { id: privateDocument.id },

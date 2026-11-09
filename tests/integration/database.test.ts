@@ -32,8 +32,8 @@ describe("database lifecycle", () => {
       ).toEqual(migrations.map(({ version, name }) => ({ version, name })));
       expect(getMigrationStatus(database)).toEqual({
         ready: true,
-        expected: [1, 2, 3],
-        applied: [1, 2, 3],
+        expected: [1, 2, 3, 4, 5],
+        applied: [1, 2, 3, 4, 5],
         pending: [],
       });
       runMigrations(database);
@@ -61,9 +61,9 @@ describe("database lifecycle", () => {
     try {
       expect(getMigrationStatus(database)).toEqual({
         ready: false,
-        expected: [1, 2, 3],
+        expected: [1, 2, 3, 4, 5],
         applied: [],
-        pending: [1, 2, 3],
+        pending: [1, 2, 3, 4, 5],
       });
     } finally {
       database.close();

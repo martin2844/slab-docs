@@ -36,6 +36,7 @@ export const createDocumentSchema = z
 
 export const updateDocumentSchema = z
   .object({
+    expected_version: z.number().int().positive().optional(),
     title: titleSchema.optional(),
     body: bodySchema.optional(),
     parent_id: documentIdSchema.nullable().optional(),

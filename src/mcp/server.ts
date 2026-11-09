@@ -228,6 +228,52 @@ export function createMcpServer(
     },
   );
 
+  server.registerTool(
+    "list_doc_commits",
+    {
+      title: "List document commits",
+      description:
+        "List published commits, including commits from earlier runs. Use get_doc_commit to inspect the complete diff before reverting.",
+      inputSchema: z
+        .object({
+          documentId: documentIdSchema.optional(),
+          offset: z.number().int().min(0).max(100000).default(0),
+        })
+        .strict(),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (input) =>
+      runTool(() =>
+        service.runChanges.history.list(access, input.documentId, input.offset),
+      ),
+  );
+  server.registerTool(
+    "get_doc_commit",
+    {
+      title: "Read document commit",
+      description:
+        "Read all before/after snapshots in a published commit and any conflicts that would prevent a revert.",
+      inputSchema: z.object({ id: documentIdSchema }).strict(),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (input) => runTool(() => service.runChanges.history.get(input.id, access)),
+  );
+  server.registerTool(
+    "revert_doc_commit",
+    {
+      title: "Revert document commit",
+      description:
+        "Restore all documents changed by a commit, preserving history. Refuses to overwrite newer changes. During a draft run, stages the reversal for the same review or automatic publication as other edits.",
+      inputSchema: z.object({ id: documentIdSchema }).strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        openWorldHint: false,
+      },
+    },
+    (input) => runTool(() => service.revertCommit(input.id, access)),
+  );
+
   if (access.kind === "admin") {
     server.registerTool(
       "ensure_collection",
